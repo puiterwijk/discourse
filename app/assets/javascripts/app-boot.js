@@ -5,7 +5,7 @@
     throw "Unsupported browser detected";
   }
 
-  // let Discourse = requirejs("discourse/app").default.create();
+  let Discourse = requirejs("discourse/app").default.create();
 
   // required for our template compiler
   window.__DISCOURSE_RAW_TEMPLATES = requirejs(
@@ -21,5 +21,5 @@
   });
 
   // ensure Discourse is added as a global
-  // window.Discourse = Discourse;
+  window.Discourse = Discourse;
 })();
