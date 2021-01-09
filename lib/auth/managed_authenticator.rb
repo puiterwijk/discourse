@@ -42,6 +42,10 @@ class Auth::ManagedAuthenticator < Auth::Authenticator
     false
   end
 
+  def should_synchronize_groups?
+    false
+  end
+
   def revoke(user, skip_remote: false)
     association = UserAssociatedAccount.find_by(provider_name: name, user_id: user.id)
     raise Discourse::NotFound if association.nil?
@@ -88,6 +92,10 @@ class Auth::ManagedAuthenticator < Auth::Authenticator
       association.user.update!(email: email)
     end
 
+    if association.user && should_synchronize_groups? && (groups = auth_token.dig(:info, :groups))
+      synchronize_groups(association.user, groups)
+    end
+
     # Update avatar/profile
     retrieve_avatar(association.user, association.info["image"])
     retrieve_profile(association.user, association.info)
@@ -111,6 +119,27 @@ class Auth::ManagedAuthenticator < Auth::Authenticator
     result.user = association.user
 
     result
+  end
+
+  def synchronize_groups(user, groups)
+    names = (groups || "").split(",").map(&:downcase)
+    ids = Group.where('LOWER(NAME) in (?) AND NOT automatic', names).pluck(:id)
+
+    group_users = GroupUser
+      .where('group_id IN (SELECT id FROM groups WHERE NOT automatic)')
+      .where(user_id: user.id)
+
+    delete_group_users = group_users
+    if ids.length > 0
+      delete_group_users = group_users.where('group_id NOT IN (?)', ids)
+    end
+    delete_group_users.destroy_all
+
+    ids -= group_users.where('group_id IN (?)', ids).pluck(:group_id)
+
+    ids.each do |group_id|
+      GroupUser.create(group_id: group_id, user_id: user.id)
+    end
   end
 
   def after_create_account(user, auth)
